@@ -11,89 +11,127 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight, Sparkles, Loader2 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabaseClient"; // ⬅️ 关键：导入 supabase 客户端
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
-    weightLb: '',
-    heightCm: '',
-    heightUnit: 'cm' as 'cm' | 'in',
-    age: '',
-    sex: 'male' as 'male' | 'female',
-    goal: 'maintain',
-    activity: 'moderate',
-    wakeTime: '07:00',
-    sleepTime: '23:00'
+    weightLb: "",
+    heightCm: "",
+    heightUnit: "cm" as "cm" | "in",
+    age: "",
+    sex: "male" as "male" | "female",
+    goal: "maintain",
+    activity: "moderate",
+    wakeTime: "07:00",
+    sleepTime: "23:00",
   });
 
   const progress = (step / 3) * 100;
 
-  // Save profile mutation
+  // 保存 profile：改成直接写 Supabase
   const saveProfileMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await apiRequest('POST', '/api/profile', data);
-      return res.json();
+      // 1. 获取当前登录用户
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw userError ?? new Error("No user");
+      }
+
+      // 2. 写入 / 更新 Supabase 中的 profiles 表
+      const { error } = await supabase
+        .from("profiles") // ⬅️ 这里用你真实的表名
+        .upsert({
+          // 如果你的表里主键叫 user_id，就改成 user_id: user.id
+          id: user.id,
+          weightLb: data.weightLb,
+          heightCm: data.heightCm,
+          age: data.age,
+          sex: data.sex,
+          goal: data.goal,
+          activity: data.activity,
+          wakeTime: data.wakeTime,
+          sleepTime: data.sleepTime,
+          unitPref: data.unitPref,
+          decimalPlaces: data.decimalPlaces,
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) {
+        console.error("supabase upsert error:", error);
+        throw error;
+      }
     },
     onSuccess: () => {
-      // localStorage.setItem is synchronous, so this is safe
-      localStorage.setItem('onboarding_complete', 'true');
-      // Force page reload to ensure Router re-initializes with fresh state
-      window.location.href = '/';
+      // 标记引导完成
+      localStorage.setItem("onboarding_complete", "true");
+      // 刷新首页
+      window.location.href = "/";
     },
     onError: () => {
       toast({
-        title: '保存失败',
-        description: '请稍后重试',
-        variant: 'destructive'
+        title: "保存失败",
+        description: "请稍后重试",
+        variant: "destructive",
       });
-    }
+    },
   });
 
   const handleNext = () => {
     if (step < 3) {
       setStep(step + 1);
     } else {
-      // Validate inputs before saving
+      // 最后一步，校验 + 保存
       const weightValue = parseFloat(formData.weightLb);
-      const heightValue = formData.heightUnit === 'in' 
-        ? parseFloat(formData.heightCm) * 2.54 
-        : parseFloat(formData.heightCm);
+      const heightValue =
+        formData.heightUnit === "in"
+          ? parseFloat(formData.heightCm) * 2.54
+          : parseFloat(formData.heightCm);
       const ageValue = parseInt(formData.age);
-      
+
       if (isNaN(weightValue) || weightValue <= 0) {
         toast({
-          title: '体重无效',
-          description: '请输入有效的体重值',
-          variant: 'destructive'
+          title: "体重无效",
+          description: "请输入有效的体重值",
+          variant: "destructive",
         });
         return;
       }
-      
+
       if (isNaN(heightValue) || heightValue < 120 || heightValue > 220) {
         toast({
-          title: '身高无效',
-          description: '请输入120-220cm之间的身高',
-          variant: 'destructive'
+          title: "身高无效",
+          description: "请输入120-220cm之间的身高",
+          variant: "destructive",
         });
         return;
       }
-      
+
       if (isNaN(ageValue) || ageValue < 15 || ageValue > 100) {
         toast({
-          title: '年龄无效',
-          description: '请输入15-100岁之间的年龄',
-          variant: 'destructive'
+          title: "年龄无效",
+          description: "请输入15-100岁之间的年龄",
+          variant: "destructive",
         });
         return;
       }
-      
+
       saveProfileMutation.mutate({
         weightLb: weightValue,
         heightCm: heightValue,
@@ -103,8 +141,8 @@ export default function Onboarding() {
         activity: formData.activity,
         wakeTime: formData.wakeTime,
         sleepTime: formData.sleepTime,
-        unitPref: 'g',
-        decimalPlaces: 1
+        unitPref: "g",
+        decimalPlaces: 1,
       });
     }
   };
@@ -124,7 +162,9 @@ export default function Onboarding() {
             <Sparkles className="w-6 h-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">欢迎使用 FitFuel Planner</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              欢迎使用 FitFuel Planner
+            </h1>
             <p className="text-sm text-muted-foreground">水+营养智能管家</p>
           </div>
         </div>
@@ -151,11 +191,16 @@ export default function Onboarding() {
                   type="number"
                   placeholder="例如: 160"
                   value={formData.weightLb}
-                  onChange={(e) => setFormData({ ...formData, weightLb: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, weightLb: e.target.value })
+                  }
                   data-testid="input-onboarding-weight"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {formData.weightLb && `约 ${(parseFloat(formData.weightLb) * 0.453592).toFixed(1)} kg`}
+                  {formData.weightLb &&
+                    `约 ${(
+                      parseFloat(formData.weightLb) * 0.453592
+                    ).toFixed(1)} kg`}
                 </p>
               </div>
 
@@ -165,20 +210,28 @@ export default function Onboarding() {
                   <div className="flex gap-1">
                     <Button
                       type="button"
-                      variant={formData.heightUnit === 'cm' ? 'default' : 'outline'}
+                      variant={
+                        formData.heightUnit === "cm" ? "default" : "outline"
+                      }
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => setFormData({ ...formData, heightUnit: 'cm' })}
+                      onClick={() =>
+                        setFormData({ ...formData, heightUnit: "cm" })
+                      }
                       data-testid="button-height-cm"
                     >
                       cm
                     </Button>
                     <Button
                       type="button"
-                      variant={formData.heightUnit === 'in' ? 'default' : 'outline'}
+                      variant={
+                        formData.heightUnit === "in" ? "default" : "outline"
+                      }
                       size="sm"
                       className="h-7 px-2 text-xs"
-                      onClick={() => setFormData({ ...formData, heightUnit: 'in' })}
+                      onClick={() =>
+                        setFormData({ ...formData, heightUnit: "in" })
+                      }
                       data-testid="button-height-in"
                     >
                       in
@@ -188,18 +241,24 @@ export default function Onboarding() {
                 <Input
                   id="height"
                   type="number"
-                  min={formData.heightUnit === 'cm' ? "120" : "47"}
-                  max={formData.heightUnit === 'cm' ? "220" : "87"}
+                  min={formData.heightUnit === "cm" ? "120" : "47"}
+                  max={formData.heightUnit === "cm" ? "220" : "87"}
                   step="0.1"
-                  placeholder={formData.heightUnit === 'cm' ? "例如: 170" : "例如: 67"}
+                  placeholder={
+                    formData.heightUnit === "cm" ? "例如: 170" : "例如: 67"
+                  }
                   value={formData.heightCm}
-                  onChange={(e) => setFormData({ ...formData, heightCm: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, heightCm: e.target.value })
+                  }
                   data-testid="input-onboarding-height"
                 />
                 <p className="text-xs text-muted-foreground">
-                  {formData.heightCm && formData.heightUnit === 'cm' && 
+                  {formData.heightCm &&
+                    formData.heightUnit === "cm" &&
                     `约 ${(parseFloat(formData.heightCm) / 2.54).toFixed(1)} in`}
-                  {formData.heightCm && formData.heightUnit === 'in' && 
+                  {formData.heightCm &&
+                    formData.heightUnit === "in" &&
                     `约 ${(parseFloat(formData.heightCm) * 2.54).toFixed(1)} cm`}
                 </p>
               </div>
@@ -213,18 +272,25 @@ export default function Onboarding() {
                   max="100"
                   placeholder="例如: 25"
                   value={formData.age}
-                  onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, age: e.target.value })
+                  }
                   data-testid="input-onboarding-age"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="sex">生理性别</Label>
-                <Select 
-                  value={formData.sex} 
-                  onValueChange={(v: 'male' | 'female') => setFormData({ ...formData, sex: v })}
+                <Select
+                  value={formData.sex}
+                  onValueChange={(v: "male" | "female") =>
+                    setFormData({ ...formData, sex: v })
+                  }
                 >
-                  <SelectTrigger id="sex" data-testid="select-onboarding-sex">
+                  <SelectTrigger
+                    id="sex"
+                    data-testid="select-onboarding-sex"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -239,17 +305,28 @@ export default function Onboarding() {
 
               <div className="space-y-2">
                 <Label htmlFor="goal">你的目标</Label>
-                <Select 
-                  value={formData.goal} 
-                  onValueChange={(v) => setFormData({ ...formData, goal: v })}
+                <Select
+                  value={formData.goal}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, goal: v })
+                  }
                 >
-                  <SelectTrigger id="goal" data-testid="select-onboarding-goal">
+                  <SelectTrigger
+                    id="goal"
+                    data-testid="select-onboarding-goal"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cut">减脂 (Lose Fat) • 热量缺口 -400 kcal</SelectItem>
-                    <SelectItem value="maintain">维持 (Maintain) • 保持当前体重</SelectItem>
-                    <SelectItem value="bulk">增肌 (Gain Muscle) • 热量盈余 +300 kcal</SelectItem>
+                    <SelectItem value="cut">
+                      减脂 (Lose Fat) • 热量缺口 -400 kcal
+                    </SelectItem>
+                    <SelectItem value="maintain">
+                      维持 (Maintain) • 保持当前体重
+                    </SelectItem>
+                    <SelectItem value="bulk">
+                      增肌 (Gain Muscle) • 热量盈余 +300 kcal
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -257,9 +334,12 @@ export default function Onboarding() {
               {/* Goal Description Card */}
               <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
                 <p className="text-sm text-foreground">
-                  {formData.goal === 'cut' && '减脂模式：基础热量 -400 kcal，帮助你安全减重'}
-                  {formData.goal === 'bulk' && '增肌模式：基础热量 +300 kcal，支持肌肉生长'}
-                  {(!formData.goal || formData.goal === 'maintain') && '维持模式：保持当前体重，均衡营养摄入'}
+                  {formData.goal === "cut" &&
+                    "减脂模式：基础热量 -400 kcal，帮助你安全减重"}
+                  {formData.goal === "bulk" &&
+                    "增肌模式：基础热量 +300 kcal，支持肌肉生长"}
+                  {(!formData.goal || formData.goal === "maintain") &&
+                    "维持模式：保持当前体重，均衡营养摄入"}
                 </p>
               </div>
             </CardContent>
@@ -278,11 +358,16 @@ export default function Onboarding() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="activity">每日活动量</Label>
-                <Select 
-                  value={formData.activity} 
-                  onValueChange={(v) => setFormData({ ...formData, activity: v })}
+                <Select
+                  value={formData.activity}
+                  onValueChange={(v) =>
+                    setFormData({ ...formData, activity: v })
+                  }
                 >
-                  <SelectTrigger id="activity" data-testid="select-onboarding-activity">
+                  <SelectTrigger
+                    id="activity"
+                    data-testid="select-onboarding-activity"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -330,7 +415,9 @@ export default function Onboarding() {
                   id="wake-time"
                   type="time"
                   value={formData.wakeTime}
-                  onChange={(e) => setFormData({ ...formData, wakeTime: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, wakeTime: e.target.value })
+                  }
                   data-testid="input-onboarding-wake"
                 />
               </div>
@@ -341,7 +428,9 @@ export default function Onboarding() {
                   id="sleep-time"
                   type="time"
                   value={formData.sleepTime}
-                  onChange={(e) => setFormData({ ...formData, sleepTime: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, sleepTime: e.target.value })
+                  }
                   data-testid="input-onboarding-sleep"
                 />
               </div>
@@ -364,7 +453,11 @@ export default function Onboarding() {
         <Button
           className="w-full h-12"
           onClick={handleNext}
-          disabled={(step === 1 && (!formData.weightLb || !formData.heightCm || !formData.age)) || saveProfileMutation.isPending}
+          disabled={
+            (step === 1 &&
+              (!formData.weightLb || !formData.heightCm || !formData.age)) ||
+            saveProfileMutation.isPending
+          }
           data-testid="button-onboarding-next"
         >
           {saveProfileMutation.isPending ? (
@@ -374,12 +467,12 @@ export default function Onboarding() {
             </>
           ) : (
             <>
-              {step === 3 ? '开始使用' : '下一步'}
+              {step === 3 ? "开始使用" : "下一步"}
               <ArrowRight className="w-4 h-4 ml-2" />
             </>
           )}
         </Button>
-        
+
         {step > 1 && (
           <Button
             variant="ghost"
